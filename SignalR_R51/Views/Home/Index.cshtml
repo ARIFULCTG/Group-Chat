@@ -1,0 +1,330 @@
+﻿@{
+    ViewData["Title"] = "Index";
+    Layout = null;
+}
+<html>
+<head>
+    <script src="~/lib/jquery/dist/jquery.js"></script>
+    <script src="~/lib/microsoft/signalr/dist/browser/signalr.js"></script>
+    <link href="~/lib/bootstrap/dist/css/bootstrap.css" rel="stylesheet" />
+    <style>
+        ul li {
+            list-style-type: none;
+            text-indent: -40px;
+        }
+    </style>
+    <script type="text/javascript">
+        $(function () {
+            $('#conversation').toggle();
+            var viewportHeight = $(window).height();
+            $('#chats').height(viewportHeight * .4);
+            $('#chats').css("background-color", "#CCD1D9");
+            $('#chats2').height(viewportHeight * .4);
+            $('#chats2').css("background-color", "#FFEAAF");
+
+            $('#startcom').on('click', function () {
+                $('#conversation').toggle('slow');
+            });
+            var IWannaChat = new signalR.HubConnectionBuilder().withUrl("/chatHub").build();
+
+            uploadFile = function (file) {
+                var formData = new FormData();
+                formData.append('files', $(file)[0].files[0]);
+                mtype = $(file)[0].files[0].type;
+                fn = $(file).val().split('\\').pop();
+                var ajaxRequest = $.ajax({
+                    type: "POST",
+                    url: "/api/UploadApics/",
+                    contentType: false,
+                    processData: false,
+                    data: formData
+                });
+                ajaxRequest.done(function (xhr, textStatus) {
+                    $(file).after(`<div>Got File: ${$(file)[0].files[0].name}</div>`);
+                });
+            }
+            sendFileToAll = function (file, mode, message) {
+                msgAll = "";
+                msg = "";
+                var formData = new FormData();
+                formData.append('files', $(file)[0].files[0]);
+                if ($(file)[0].files[0] != undefined) {
+                    mtype = $(file)[0].files[0].type;
+                    if (mtype.indexOf("image") >= 0) {
+                        var msg = `<img src='/uploads/${fn}' width='100px'/>`;
+                    }
+                    else if (mtype.indexOf("video") >= 0) {
+                        var msg = `<video autoplay control width='100px' height='100px'><source src='/uploads/${fn}' type="video/mp4"></video>`;
+                    }
+                    else if (mtype.indexOf("audio") >= 0) {
+                        var msg = `<audio autoplay control width='100px' height='100px'><source src='/uploads/${fn}' type="audio/mpeg"></audio>`;
+                    }
+                    else {
+                        var msg = `<a href='/uploads/${fn}'>${fn}</a>`;
+                    }
+                }
+                if (mode == "all")
+                    msgAll = `<b>${$('#txtUser').val()}:</b>`;
+                else if (mode == "group")
+                    msgAll = `<b>${$('#txtUser').val()} sent a message to Group (${$("#txtGroup").val()}):</b>`;
+                else if (mode == "user")
+                    msgAll = `<b>[${$('#txtUser').val()}] sent a message to User {${$("#txtUser3").val()}}:</b>`;
+                if (message != "" && $(file).val() != "" && $(file).val() != undefined) {
+                    msgAll += `${message}<br/>${msg}`;
+                }
+                else if (message == "") {
+                    msgAll += `<br/>${msg}`;
+                }
+                else if ($(file).val() == "") {
+                    msgAll += `${message}`;
+                }
+                if (mode == "all") {
+                    IWannaChat.invoke("Send1", msgAll).catch(function (err) {
+                        return console.error("send1:" + err.toString());
+                    });
+                }
+                else if (mode == "group") {
+                    IWannaChat.invoke("SendToGroup", $('#txtGroup').val(), msgAll).catch(function (err) {
+                        return console.error(err.toString());
+                    });
+                }
+                else if (mode == "user") {
+                    IWannaChat.invoke("Send", $('#txtUser2').val(), msgAll).catch(function (err) {
+                        return console.error(err.toString());
+                    });
+                }
+                $(file).val(null);
+
+            }
+            IWannaChat.on("addMessage", function (message) {
+                s = ""
+                s2 = "";
+                var match = message.match(/\[(.*?)\]/);
+                if (match) {
+                    s = match[1]; // Show first capture
+                }
+                var match2 = message.match(/\{(.*?)\}/);
+                if (match2) {
+                    s2 = match2[1]; // Show first capture
+                }
+                $('#listMessages').append('<li user="' + s + '" user2 = "' + s2 + '" >' + message + '</li>');
+                var d = $('#chats');
+                d.scrollTop(d.prop("scrollHeight"));
+            });
+            IWannaChat.on("addChatMessage", function (message) {
+                $('#listMessagestogroup').append('<li>' + message + '</li>');
+                var d2 = $('#chats2');
+                d2.scrollTop(d2.prop("scrollHeight"));
+            });
+            IWannaChat.on("allGroups", function (message) {
+                $('#groups').append('<li id="gp">' + message + '</li>');
+            });
+            IWannaChat.on("allUsers", function (message) {
+                $('#user-list').html("");
+                $.each(message, function (index, value) {
+                    //alert(value.username)
+                    $('#user-list').append(`<li id="gp" value='${value.connectionid}'>${value.username}</li>`);
+                });
+            });
+            $("#fileUpload,#fileUpload2,#fileUpload3").change(function () {
+                uploadFile(this);
+            });
+            $("body div form div div div div div#users ul#user-list").on("click", "li#gp", function () {
+                gp = $(this).attr('value');
+                $("#txtUser2").val(gp);
+                gp2 = $(this).text();
+                $("#txtUser3").val(gp2);
+                gp3 = $("#txtUser").val();
+                if ($(this).css('font-weight') == "700") {
+                    $("#txtUser2").val("");
+                    $(this).css('font-weight', 'normal');
+                    $("body div form div div div div ul#listMessages li").show();
+                }
+                else {
+                    $("body div form div div div div ul#listMessages li").hide();
+                    $("body div form div div div div ul#listMessages li[user='" + gp2 + "']").show();
+                    $("body div form div div div div ul#listMessages li[user2='" + gp2 + "']").show();
+                    $(this).parent().children().css('font-weight', 'normal')
+                    $(this).css('font-weight', 'bold');
+                }
+            });
+            $("body div form div div div div div#groups").on("click", "li#gp", function () {
+                gp = $(this).html();
+                IWannaChat.invoke("addGroup", gp).catch(function (err) {
+                    return console.error(err.toString());
+                });
+                $("#txtGroup").val(gp);
+            });
+
+            $("#SendMessage").click(function () {
+                sendFileToAll("#fileUpload", "all", $("#txtMessage").val());
+            });
+            IWannaChat.start().then(function () {
+            }).catch(function (err) {
+                return console.error(err.toString());
+            });
+            $("#SendMessagetogroup").click(function () {
+                sendFileToAll("#fileUpload2", "group", $("#txtMessagetogroup").val());
+            });
+            $("#SendMessagetouser").click(function () {
+                sendFileToAll("#fileUpload3", "user", $("#txtMessagetouser").val());
+            });
+            $("#UserAdd").click(function () {
+                var msg = "<b>New User added to group " + $('#txtGroup').val() + ". User is: </b>" + $('#txtUser').val();
+                IWannaChat.invoke("Send1", msg).catch(function (err) {
+                    return console.error(err.toString());
+                });
+                gp = $('#txtUser').val();
+                IWannaChat.invoke("addUser", gp).catch(function (err) {
+                    return console.error("addUser:" + err.toString());
+                });
+                IWannaChat.invoke("getAllUsers", gp).catch(function (err) {
+                    return console.error("getallgroup:" + err.toString());
+                });
+            });
+            $("#groupAdd").click(function () {
+                gp = $('#txtGroup').val();
+                var msg = "<b>New Group added : " + $('#txtGroup').val();// + ". User is: </b>" + $('#txtUser').val();
+                IWannaChat.invoke("addGroup", gp).catch(function (err) {
+                    return console.error("addGroup:" + err.toString());
+                });
+                IWannaChat.invoke("Send1", msg).catch(function (err) {
+                    return console.error("send1:" + err.toString());
+                });
+                IWannaChat.invoke("getAllGroups", gp).catch(function (err) {
+                    return console.error("getallgroup:" + err.toString());
+                });
+            });
+
+        });
+    </script>
+</head>
+<body>
+    <div class="container-fluid">
+        <h1>Index</h1>
+
+        <form id="form1" runat="server" enctype="multipart/form-data">
+            <div>
+                <div class="row">
+                    <div class="col-sm-2">
+                        <div class="col-sm-12" style="margin-bottom:5px">
+                            <div id="groups" class="col-md-12" style="background-color: #71C4C1"><h4>Groups are Here</h4></div>
+                        </div>
+                        <hr />
+                        <div class="col-sm-12" style="margin-bottom:5px">
+                            <div id="users" class="col-md-12" style="background-color: #71C4C1">
+                                <h4>Users are Here</h4>
+                                <ul id="user-list">
+                                </ul>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="col-sm-4">
+                        <fieldset>
+                            <legend>Add Group</legend>
+                            <div class="col-sm-12" style="margin-bottom:5px">
+                                <div class="form-group">
+                                    <label for="group" class="control-label col-md-4">What is the name of your Group: </label>
+                                    <input type="text" id="txtGroup" class="control-label col-md-8" />
+                                    <br />
+                                    <input type="button" class="btn btn-success btn-sm" id="groupAdd" value="Add Group" />
+                                </div>
+                            </div>
+                        </fieldset>
+                        <fieldset>
+                            <legend>Add User</legend>
+                            <div class="col-sm-12" style="margin-top:5px">
+                                <div class="form-group">
+                                    <label for="name" class="control-label col-md-4">Who are you: </label>
+                                    <input type="text" id="txtUser" class="control-label  col-md-8" />
+                                    <br />
+                                    <input type="button" class="btn btn-success btn-sm col-md-offset-4" id="UserAdd" value="Add User" />
+                                    <hr />
+
+                                </div>
+                            </div>
+                        </fieldset>
+
+                        <div class="col-sm-12" style="margin-top:10px">
+                            <input type="button" class="btn btn-primary btn-md col-md-offset-4" id="startcom" value="Start Communication" />
+                        </div>
+                        <div id="conversation">
+
+
+                            <div class="col-sm-12" style="margin-top:5px">
+                                <fieldset>
+                                    <legend>Group Message</legend>
+                                    <div class="row form-group">
+                                        <label for="message" class="control-label col-md-4">Write Message to Group </label>
+<textarea id="txtMessagetogroup" class="col-md-8"></textarea>
+                                    </div>
+                                    <div class="row form-group">
+                                        <label for="attachment" class="control-label col-md-4">Attachment: </label>
+                                        <input id="fileUpload2" type="file" class="btn btn-warning col-md-8" />
+                                    </div>
+                                    <div class="row form-group">
+                                        <input type="button" class="btn btn-success col-md-offset-4" id="SendMessagetogroup" value="Send SMS" />
+                                    </div>
+                                </fieldset>
+                            </div>
+
+                            <div class="col-sm-12" style="margin-top:5px">
+                                <fieldset>
+                                    <legend>Message to User</legend>
+                                    <div class="row form-group" style="display:none">
+                                        <label for="message" class="control-label col-md-4">To User </label>
+                                        <input type="text" id="txtUser2" class="col-md-4" /><input type="text" id="txtUser3" class="col-md-4" /><br />
+                                    </div>
+                                    <div class="row form-group">
+                                        <label for="message" class="control-label col-md-4">Write Message to User </label>
+<textarea id="txtMessagetouser" class="col-md-8"></textarea>
+                                    </div>
+                                    <div class="row form-group">
+                                        <label for="attachment" class="control-label col-md-4">Attachment: </label>
+                                        <input id="fileUpload3" type="file" class="btn btn-warning col-md-8" />
+                                    </div>
+                                    <div class="row form-group">
+                                        <input type="button" class="btn btn-success col-md-offset-4" id="SendMessagetouser" value="Send SMS" />
+                                    </div>
+                                </fieldset>
+                            </div>
+
+
+                            <div class="col-sm-12" style="margin-top:5px">
+                                <fieldset>
+                                    <legend>Message to All</legend>
+                                    <div class="row form-group">
+                                        <label for="message" class="control-label col-md-4">Write Message to All </label>
+<textarea id="txtMessage" class="col-md-8"></textarea>
+                                    </div>
+                                    <div class="row form-group">
+                                        <label for="attachment" class="control-label col-md-4">Attachment: </label>
+                                        <input id="fileUpload" type="file" class="btn btn-warning col-md-8" />
+                                    </div>
+                                    <div class="row form-group">
+                                        <input type="button" class="btn btn-success col-md-offset-4" id="SendMessage" value="Send SMS" />
+                                    </div>
+                                </fieldset>
+                            </div>
+                        </div>
+
+                    </div>
+
+                    <div class="col-sm-6">
+                        <div id="chats" style="overflow:auto;">
+                            <ul id="listMessages" style="background-color:#0f0"></ul>
+                        </div>
+                        <div id="chats2" style="overflow:auto;">
+                            <ul id="listMessagestogroup"></ul>
+                        </div>
+
+                    </div>
+                </div>
+            </div>
+
+
+        </form>
+    </div>
+
+</body>
+</html>
